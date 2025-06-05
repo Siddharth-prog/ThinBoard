@@ -1,10 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom';
 import './App.css'
-import Navbar from './components/Navbar';
-import { Button } from './components/ui/button'
 import Login from './pages/login'
 import { RouterProvider } from 'react-router';
 import MainLayout from './layout/MainLayout';
+import Dashboard from './pages/Dashboard';
+
+import Board from './pages/Room';
 
 const appRouter = createBrowserRouter([
   {
@@ -19,17 +20,25 @@ const appRouter = createBrowserRouter([
       </>)
     },
     {
+      path: "dashboard",
+      element:<Dashboard/>
+    },
+    {
       path:"login",
       element:<Login/>
-    }
+    },
   ],
+},
+{
+  path:"board",
+  element:<Board/>
 },
 ]);
 
 function App() {
 
   return (
-    <main>
+    <main className="h-full">
       <RouterProvider router={appRouter} />
     </main>
   )
