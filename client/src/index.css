@@ -1,5 +1,7 @@
 @import "tailwindcss";
-
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 @plugin "tailwindcss-animate";
 
 @custom-variant dark (&:is(.dark *));
@@ -121,4 +123,21 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@keyframes jump {
+  0%, 100% {
+    transform: translateY(0);
+    text-shadow: 0 0 5px ;
+  }
+  50% {
+    transform: translateY(-10px);
+    text-shadow: 0 0 0  ;
+
+  }
+}
+
+.animate-jump {
+  animation: jump 1s ease-in-out infinite;
+  display: inline-block; /* Required to make transform apply properly */
 }
