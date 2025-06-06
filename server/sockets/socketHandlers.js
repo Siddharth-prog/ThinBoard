@@ -34,14 +34,17 @@ export const registerSocketEvents = (io, socket) => {
   socket.on('create-room', async ({ username, avatar }, callback) => {
     const roomId = generateUniqueRoomId();
 
-    const newRoom = new Room({ _id: roomId, users: [] }); // <-- Use _id here
+    const newRoom = new Room({ roomId, users: [] });
     await newRoom.save();
 
     const user = new User({ socketId: socket.id, username, avatar, roomId });
     await user.save();
 
-    newRoom.users.push(user._id);
-    await newRoom.save();
+    await Room.findOneAndUpdate(
+      { roomId },
+      { $addToSet: { users: user._id } },
+      { new: true }
+    );
 
     socket.join(roomId);
     io.to(roomId).emit('user-list', await User.find({ roomId }));
@@ -52,7 +55,7 @@ export const registerSocketEvents = (io, socket) => {
 
   // Join an existing room
   socket.on('join-room', async ({ roomId, username, avatar }, callback) => {
-    const room = await Room.findById(roomId); // <-- Use findById
+    const room = await Room.findOne({ roomId });
 
     if (!room) {
       return callback({ error: 'Room not found' });
@@ -61,8 +64,11 @@ export const registerSocketEvents = (io, socket) => {
     const user = new User({ socketId: socket.id, username, avatar, roomId });
     await user.save();
 
-    room.users.push(user._id);
-    await room.save();
+    await Room.findOneAndUpdate(
+      { roomId },
+      { $addToSet: { users: user._id } },
+      { new: true }
+    );
 
     socket.join(roomId);
     io.to(roomId).emit('user-list', await User.find({ roomId }));
@@ -90,15 +96,39 @@ export const registerSocketEvents = (io, socket) => {
   });
 
   // Disconnect event
+    socket.on('leave-room', async ({ roomId }) => {
+    const user = await User.findOne({ socketId: socket.id });
+    if (!user || !roomId) return;
+
+    const room = await Room.findOne({ roomId });
+    if (room) {
+      room.users = room.users.filter(
+        uid => uid.toString() !== user._id.toString()
+      );
+      await room.save();
+    }
+
+    await User.deleteOne({ socketId: socket.id });
+
+    socket.leave(roomId);
+    io.to(roomId).emit('user-list', await User.find({ roomId }));
+
+    console.log(`👋 User ${user.username} left room: ${roomId}`);
+  });
+
   socket.on('disconnect', async () => {
     const user = await User.findOne({ socketId: socket.id });
     if (!user) return;
 
     const roomId = user.roomId;
+
     if (roomId) {
-      const room = await Room.findById(roomId); // Use _id directly
+      const room = await Room.findOne({ roomId });
+
       if (room) {
-        room.users = room.users.filter(uid => uid.toString() !== user._id.toString());
+        room.users = room.users.filter(
+          uid => uid.toString() !== user._id.toString()
+        );
         await room.save();
       }
 

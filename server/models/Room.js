@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const roomSchema = new mongoose.Schema({
-  _id: { type: String, unique: true },
+  roomId: { type: String, unique: true, required: true }, // ✅ Your custom ID
   users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 });
 
