@@ -1,10 +1,12 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { floodFill } from '@/features/floodfill';
 
 const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const drawing = useRef(false);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -54,7 +56,15 @@ const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
       y: e.clientY - rect.top,
     };
   };
-
+  // ⬇️ Restore image from Data URL
+  const restoreCanvas = (dataUrl) => {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+      ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      ctxRef.current.drawImage(img, 0, 0);
+    };
+  };
   const handleMouseDown = (e) => {
     const { x, y } = getMousePos(e);
     if (!ctxRef.current || isNaN(x) || isNaN(y)) return;
@@ -77,6 +87,10 @@ const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
       });
       drawing.current = false;
     }
+    const canvas = canvasRef.current;
+    const snapshot = canvas.toDataURL();
+    setUndoStack((prev) => [...prev, snapshot]);
+    setRedoStack([]); // clear redo stack
   };
 
   const handleMouseMove = (e) => {
@@ -109,12 +123,29 @@ const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
     }
   };
 
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((prevStack) => prevStack.slice(0, -1));
+    setRedoStack((r) => [...r, canvasRef.current.toDataURL()]);
+    restoreCanvas(prev);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((r) => r.slice(0, -1));
+    setUndoStack((u) => [...u, canvasRef.current.toDataURL()]);
+    restoreCanvas(next);
+  };
+
   const handleMouseUp = () => {
     drawing.current = false;
     if (ctxRef.current) ctxRef.current.beginPath();
   };
 
   return (
+    <div>
     <canvas
       id="canvas"
       ref={canvasRef}
@@ -123,6 +154,11 @@ const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     />
+    <div className="fixed bottom-4 left-4 flex gap-2">
+        <button onClick={handleUndo} className="bg-gray-200 px-2 py-1 rounded">Undo</button>
+        <button onClick={handleRedo} className="bg-gray-200 px-2 py-1 rounded">Redo</button>
+      </div>
+    </div>
   );
 };
 
