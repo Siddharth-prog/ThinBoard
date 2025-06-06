@@ -4,157 +4,186 @@ import { floodFill } from '@/features/floodfill';
 const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
-  const drawing = useRef(false);
+  const isDrawing = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
+
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    canvas.width = window.innerWidth * 0.75;
-    canvas.height = window.innerHeight - 100;
-    canvas.style.border = '1px solid #000';
-    canvas.style.backgroundColor = '#fff';
+    const resizeCanvas = () => {
+      const width = window.innerWidth * 0.75;
+      const height = window.innerHeight - 100;
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    };
 
-    const ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctxRef.current = ctx;
 
     const handleDrawing = (data) => {
-      if (!ctxRef.current) return;
       const ctx = ctxRef.current;
+      const w = canvas.width;
+      const h = canvas.height;
 
-      if (data.type === 'brush') {
-        ctx.strokeStyle = data.color;
+      if (data.type === 'brush' || data.type === 'eraser') {
+        ctx.strokeStyle = data.type === 'eraser' ? '#ffffff' : data.color;
         ctx.lineWidth = data.size;
         ctx.beginPath();
-        ctx.moveTo(data.x0, data.y0);
-        ctx.lineTo(data.x1, data.y1);
-        ctx.stroke();
-      } else if (data.type === 'eraser') {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = data.size;
-        ctx.beginPath();
-        ctx.moveTo(data.x0, data.y0);
-        ctx.lineTo(data.x1, data.y1);
+        ctx.moveTo(data.x0 * w, data.y0 * h);
+        ctx.lineTo(data.x1 * w, data.y1 * h);
         ctx.stroke();
       } else if (data.type === 'fill') {
-        floodFill(ctx, data.x, data.y, data.color);
+        floodFill(ctx, data.x * w, data.y * h, data.color);
       }
     };
 
     socket.on('drawing', handleDrawing);
-    return () => socket.off('drawing', handleDrawing);
+
+    return () => {
+      socket.off('drawing', handleDrawing);
+      window.removeEventListener('resize', resizeCanvas);
+    };
   }, [socket]);
 
-  const getMousePos = (e) => {
+  const getPos = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     };
   };
-  // ⬇️ Restore image from Data URL
+
+  const startDrawing = (e) => {
+    e.preventDefault();
+    const { x, y } = getPos(e);
+    lastPos.current = { x, y };
+    isDrawing.current = true;
+
+    if (selectedTool === 'fill') {
+      const ctx = ctxRef.current;
+      const canvas = canvasRef.current;
+      floodFill(ctx, x, y, selectedColor);
+      socket.emit('drawing', {
+        type: 'fill',
+        x: x / canvas.width,
+        y: y / canvas.height,
+        color: selectedColor,
+        roomId,
+      });
+      return;
+    }
+
+    setUndoStack((prev) => [...prev, canvasRef.current.toDataURL()]);
+    setRedoStack([]);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing.current || selectedTool === 'fill') return;
+    e.preventDefault();
+
+    const { x, y } = getPos(e);
+    const { x: lastX, y: lastY } = lastPos.current;
+    const ctx = ctxRef.current;
+    const canvas = canvasRef.current;
+
+    ctx.strokeStyle = selectedTool === 'eraser' ? '#ffffff' : selectedColor;
+    ctx.lineWidth = brushSize;
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    socket.emit('drawing', {
+      type: selectedTool,
+      x0: lastX / canvas.width,
+      y0: lastY / canvas.height,
+      x1: x / canvas.width,
+      y1: y / canvas.height,
+      color: selectedColor,
+      size: brushSize,
+      roomId,
+    });
+
+    lastPos.current = { x, y };
+  };
+
+  const stopDrawing = () => {
+    isDrawing.current = false;
+  };
+
   const restoreCanvas = (dataUrl) => {
     const img = new Image();
-    img.src = dataUrl;
     img.onload = () => {
       ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       ctxRef.current.drawImage(img, 0, 0);
     };
+    img.src = dataUrl;
   };
-  const handleMouseDown = (e) => {
-    const { x, y } = getMousePos(e);
-    if (!ctxRef.current || isNaN(x) || isNaN(y)) return;
-    drawing.current = true;
 
-    const ctx = ctxRef.current;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lastX = x;
-    ctx.lastY = y;
-
-    if (selectedTool === 'fill') {
-      floodFill(ctx, Math.floor(x), Math.floor(y), selectedColor);
-      socket.emit('drawing', {
-        type: 'fill',
-        x: Math.floor(x),
-        y: Math.floor(y),
-        color: selectedColor,
-        roomId,
-      });
-      drawing.current = false;
-    }
+  useEffect(() => {
     const canvas = canvasRef.current;
-    const snapshot = canvas.toDataURL();
-    setUndoStack((prev) => [...prev, snapshot]);
-    setRedoStack([]); // clear redo stack
-  };
 
-  const handleMouseMove = (e) => {
-    if (!drawing.current) return;
-    const { x, y } = getMousePos(e);
-    const ctx = ctxRef.current;
-    if (!ctx) return;
+    const handleTouchStart = (e) => startDrawing(e);
+    const handleTouchMove = (e) => draw(e);
+    const handleTouchEnd = () => stopDrawing();
 
-    if (selectedTool === 'brush' || selectedTool === 'eraser') {
-      const color = selectedTool === 'eraser' ? '#ffffff' : selectedColor;
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
 
-      ctx.strokeStyle = color;
-      ctx.lineWidth = brushSize;
-      ctx.lineTo(x, y);
-      ctx.stroke();
-
-      socket.emit('drawing', {
-        type: selectedTool,
-        x0: ctx.lastX,
-        y0: ctx.lastY,
-        x1: x,
-        y1: y,
-        color: selectedColor,
-        size: brushSize,
-        roomId,
-      });
-
-      ctx.lastX = x;
-      ctx.lastY = y;
-    }
-  };
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
 
   const handleUndo = () => {
-    if (undoStack.length === 0) return;
-    const prev = undoStack[undoStack.length - 1];
-    setUndoStack((prevStack) => prevStack.slice(0, -1));
+    if (!undoStack.length) return;
+    const last = undoStack.pop();
+    setUndoStack([...undoStack]);
     setRedoStack((r) => [...r, canvasRef.current.toDataURL()]);
-    restoreCanvas(prev);
+    restoreCanvas(last);
   };
 
   const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    setRedoStack((r) => r.slice(0, -1));
+    if (!redoStack.length) return;
+    const next = redoStack.pop();
+    setRedoStack([...redoStack]);
     setUndoStack((u) => [...u, canvasRef.current.toDataURL()]);
     restoreCanvas(next);
   };
 
-  const handleMouseUp = () => {
-    drawing.current = false;
-    if (ctxRef.current) ctxRef.current.beginPath();
-  };
-
   return (
     <div>
-    <canvas
-      id="canvas"
-      ref={canvasRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    />
-    <div className="fixed bottom-4 left-4 flex gap-2">
+      <canvas
+        ref={canvasRef}
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        style={{
+          display: 'block',
+          touchAction: 'none',
+          userSelect: 'none',
+          backgroundColor: '#ffffff',
+        }}
+      />
+      <div className="fixed bottom-4 left-4 flex gap-2">
         <button onClick={handleUndo} className="bg-gray-200 px-2 py-1 rounded">Undo</button>
         <button onClick={handleRedo} className="bg-gray-200 px-2 py-1 rounded">Redo</button>
       </div>

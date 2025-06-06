@@ -95,49 +95,54 @@ export const registerSocketEvents = (io, socket) => {
     });
   });
 
-  // Disconnect event
-    socket.on('leave-room', async ({ roomId }) => {
-    const user = await User.findOne({ socketId: socket.id });
-    if (!user || !roomId) return;
-
-    const room = await Room.findOne({ roomId });
-    if (room) {
-      room.users = room.users.filter(
-        uid => uid.toString() !== user._id.toString()
+  // Leave Room manually
+socket.on('leave-room', async (data) => {
+    try {
+      const user = await User.findOne({ socketId: socket.id });
+      const roomId = data?.roomId || user?.roomId;
+  
+      if (!user || !roomId) return;
+  
+      await Room.findOneAndUpdate(
+        { roomId },
+        { $pull: { users: user._id } }  // atomic update
       );
-      await room.save();
-    }
-
-    await User.deleteOne({ socketId: socket.id });
-
-    socket.leave(roomId);
-    io.to(roomId).emit('user-list', await User.find({ roomId }));
-
-    console.log(`👋 User ${user.username} left room: ${roomId}`);
-  });
-
-  socket.on('disconnect', async () => {
-    const user = await User.findOne({ socketId: socket.id });
-    if (!user) return;
-
-    const roomId = user.roomId;
-
-    if (roomId) {
-      const room = await Room.findOne({ roomId });
-
-      if (room) {
-        room.users = room.users.filter(
-          uid => uid.toString() !== user._id.toString()
-        );
-        await room.save();
-      }
-
+  
       await User.deleteOne({ socketId: socket.id });
-
-      const remainingUsers = await User.find({ roomId });
-      io.to(roomId).emit('user-list', remainingUsers);
+  
+      socket.leave(roomId);
+      io.to(roomId).emit('user-list', await User.find({ roomId }));
+  
+      console.log(`👋 User ${user.username} left room: ${roomId}`);
+    } catch (err) {
+      console.error('Error in leave-room:', err);
     }
-
-    console.log(`❌ User disconnected: ${socket.id}`);
   });
-};
+  
+  // Handle disconnect
+  socket.on('disconnect', async () => {
+    try {
+      setTimeout(async () => {
+        const user = await User.findOne({ socketId: socket.id });
+        if (!user) return;
+  
+        const roomId = user.roomId;
+        if (roomId) {
+          await Room.findOneAndUpdate(
+            { roomId },
+            { $pull: { users: user._id } }  // atomic update
+          );
+        }
+  
+        await User.deleteOne({ socketId: socket.id });
+  
+        const remainingUsers = await User.find({ roomId });
+        io.to(roomId).emit('user-list', remainingUsers);
+  
+        console.log(`❌ User disconnected: ${socket.id}`);
+      }, 1000);
+    } catch (err) {
+      console.error('Error handling disconnection:', err);
+    }
+  });
+};  
