@@ -14,7 +14,7 @@ const generateUniqueRoomId = () => {
 export const registerSocketEvents = (io, socket) => {
   console.log(`🔌 New socket connected: ${socket.id}`);
 
-  // Store username and avatar on connection
+  // Set username and avatar
   socket.on('set-username', async ({ username, avatar }) => {
     let existingUser = await User.findOne({ socketId: socket.id });
 
@@ -34,7 +34,7 @@ export const registerSocketEvents = (io, socket) => {
   socket.on('create-room', async ({ username, avatar }, callback) => {
     const roomId = generateUniqueRoomId();
 
-    const newRoom = new Room({ roomId, users: [] });
+    const newRoom = new Room({ _id: roomId, users: [] }); // <-- Use _id here
     await newRoom.save();
 
     const user = new User({ socketId: socket.id, username, avatar, roomId });
@@ -52,7 +52,7 @@ export const registerSocketEvents = (io, socket) => {
 
   // Join an existing room
   socket.on('join-room', async ({ roomId, username, avatar }, callback) => {
-    const room = await Room.findOne({ roomId });
+    const room = await Room.findById(roomId); // <-- Use findById
 
     if (!room) {
       return callback({ error: 'Room not found' });
@@ -89,14 +89,14 @@ export const registerSocketEvents = (io, socket) => {
     });
   });
 
-  // User disconnect handler
+  // Disconnect event
   socket.on('disconnect', async () => {
     const user = await User.findOne({ socketId: socket.id });
     if (!user) return;
 
     const roomId = user.roomId;
     if (roomId) {
-      const room = await Room.findOne({ roomId });
+      const room = await Room.findById(roomId); // Use _id directly
       if (room) {
         room.users = room.users.filter(uid => uid.toString() !== user._id.toString());
         await room.save();

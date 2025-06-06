@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const roomSchema = new mongoose.Schema({
-  roomId: { type: String, unique: true },
+  _id: { type: String, unique: true },
   users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 });
 
