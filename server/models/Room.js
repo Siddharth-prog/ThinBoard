@@ -1,8 +1,9 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-const roomSchema = new mongoose.Schema({
-  roomId: { type: String, unique: true, required: true }, // ✅ Your custom ID
-  users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+const RoomSchema = new Schema({
+  roomId: { type: String, required: true, unique: true },  // ✅ index ensures uniqueness
+  users: [{ type: Schema.Types.ObjectId, ref: 'User' }]
 });
 
-export default mongoose.model('Room', roomSchema);
+export default mongoose.model('Room', RoomSchema);

@@ -33,6 +33,8 @@ const Canvas = ({ selectedTool, selectedColor, brushSize, socket, roomId }) => {
     ctxRef.current = ctx;
 
     const handleDrawing = (data) => {
+      if (!data || !data.type) return;
+
       const ctx = ctxRef.current;
       const w = canvas.width;
       const h = canvas.height;

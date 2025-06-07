@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/rooms', roomRoutes);
 
-mongoose.connect('mongodb://localhost:27017/whiteboard')
+mongoose.connect("mongodb+srv://siddharth-prog:sidprog54321@thinkboardcluster.cdbejml.mongodb.net/?retryWrites=true&w=majority&appName=ThinkboardCluster")
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB error:', err));
 

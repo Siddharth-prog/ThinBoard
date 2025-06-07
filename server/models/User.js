@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
-  socketId: String,
+  socketId: {type:String , unique: true},
   username: String,
   avatar: String,
   roomId: String,

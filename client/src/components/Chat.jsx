@@ -7,8 +7,8 @@ function Chat({ socket, roomId }) {
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('chat-message', ({ sender, message }) => {
-      setMessages((prev) => [...prev, { sender, message }]);
+    socket.on('chat-message', ({ sender, avatar, message, timestamp }) => {
+      setMessages((prev) => [...prev, { sender, avatar, message, timestamp }]);
     });
 
     return () => {
@@ -18,8 +18,19 @@ function Chat({ socket, roomId }) {
 
   const sendMessage = () => {
     if (input.trim() === '') return;
+
     socket.emit('chat-message', { roomId, message: input });
-    setMessages((prev) => [...prev, { sender: 'You', message: input }]);
+
+    // Optional: Show "You" message locally
+    setMessages((prev) => [
+      ...prev,
+      {
+        sender: 'You',
+        avatar: localStorage.getItem('avatar'),
+        message: input,
+        timestamp: new Date(),
+      },
+    ]);
     setInput('');
   };
 
@@ -30,10 +41,15 @@ function Chat({ socket, roomId }) {
   return (
     <div className="bg-white border p-2 mt-4 h-[300px] overflow-y-scroll">
       <h3 className="font-semibold mb-2">Chat</h3>
-      <div className="space-y-1 mb-2">
+      <div className="space-y-2 mb-2">
         {messages.map((msg, idx) => (
-          <div key={idx}>
-            <strong>{msg.sender}:</strong> {msg.message}
+          <div key={idx} className="flex items-center gap-2">
+            {msg.avatar && (
+              <img src={msg.avatar} alt="avatar" className="w-6 h-6 rounded-full" />
+            )}
+            <div>
+              <strong>{msg.sender}</strong>: {msg.message}
+            </div>
           </div>
         ))}
       </div>
