@@ -10,7 +10,6 @@ import { io } from 'socket.io-client';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-// Simple SVG icons
 const CopyIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -39,50 +38,54 @@ const HomePage = () => {
   const navigate = useNavigate();
   const socketRef = useRef(null);
 
+  // Copy room id to clipboard
   const copyRoomId = () => {
     navigator.clipboard.writeText(roomId);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  // Leave the room
   const leaveRoom = () => {
     if (socketRef.current) {
-      socketRef.current.emit('leave-room', { roomId }); // Add roomId here
+      socketRef.current.emit('leave-room', { roomId });
       socketRef.current.disconnect();
     }
     setRoomId('');
     navigate('/');
   };
 
+  // Keep roomId in sync with URL param
   useEffect(() => {
     if (paramRoomId && paramRoomId !== roomId) {
       setRoomId(paramRoomId);
     }
   }, [paramRoomId]);
 
+  // Initialize socket connection once
   useEffect(() => {
     socketRef.current = io('http://localhost:8000', {
       transports: ['websocket'],
       withCredentials: true,
     });
 
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
+
+    // Clean up socket on unmount
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      socket.disconnect();
     };
   }, []);
 
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (user && socket) {
-      socket.emit('set-username', {
-        username: user.username,
-        avatar: user.avatar,
-      });
-    }
-  }, [user]);
-
+  // Load user from localStorage once
   useEffect(() => {
     const savedUser = localStorage.getItem('whiteboardUser');
     if (savedUser) {
@@ -90,36 +93,51 @@ const HomePage = () => {
     }
   }, []);
 
+  // Join room, listen for user-list updates, and leave room on cleanup
+
+  
   useEffect(() => {
     const socket = socketRef.current;
-    if (roomId && socket) {
-      socket.emit('join-room', { roomId }, (response) => {
-        if (response?.error) {
-          alert(response.error);
-          setRoomId('');
+    if (!roomId || !user || !socket) return;
+  
+    const handleUserList = (users) => {
+      setUserList(users);
+    };
+  
+    // Join room with callback to handle errors
+    socket.emit(
+      'join-room',
+      {
+        roomId,
+        username: user.username,
+        avatar: user.avatar,
+      },
+      (res) => {
+        if (res.error) {
+          alert(res.error);
+          navigate('/');
         }
-      });
-
-      socket.on('user-list', (users) => {
-        // Filter out duplicate users
-        const uniqueUsers = users.filter(
-          (user, index, self) => index === self.findIndex((u) => u.id === user.id)
-        );
-        setUserList(uniqueUsers);
-      });
-
-      return () => {
-        socket.off('user-list');
-      };
-    }
-  }, [roomId]);
-
+      }
+    );
+  
+    // Listen for updated user list
+    socket.on('user-list', handleUserList);
+  
+    // Clean up on unmount or dependency change
+    return () => {
+      // Tell server user is leaving this room
+      socket.emit('leave-room', { roomId, userId: user.id || user.username });
+  
+      // Remove this listener to avoid duplicates on re-render
+      socket.off('user-list', handleUserList);
+    };
+  }, [roomId, user, navigate]);
+  
   if (!user) return <Auth setUser={setUser} />;
   if (!roomId) return <Rooms setRoomId={setRoomId} socket={socketRef.current} user={user} />;
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 text-gray-800">
-      {/* Top Navigation Bar */}
       <header className="flex items-center justify-between px-6 py-3 bg-white shadow-md z-10">
         <Toolbar
           selectedTool={selectedTool}
@@ -129,7 +147,6 @@ const HomePage = () => {
           brushSize={brushSize}
           setBrushSize={setBrushSize}
         />
-        
         <div className="flex items-center gap-4">
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -140,7 +157,6 @@ const HomePage = () => {
             <LeaveIcon />
             Leave Room
           </motion.button>
-          
           {roomId && (
             <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-800 px-4 py-2 rounded-lg">
               <span className="font-medium">Room:</span>
@@ -155,7 +171,7 @@ const HomePage = () => {
                 <CopyIcon />
               </motion.button>
               {isCopied && (
-                <motion.span 
+                <motion.span
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
@@ -168,10 +184,7 @@ const HomePage = () => {
           )}
         </div>
       </header>
-
-      {/* Main Content Area */}
       <main className="flex flex-1 overflow-hidden">
-        {/* Canvas Area (3/4 width) */}
         <div className="w-3/4 flex flex-col h-full bg-white shadow-inner">
           <div className="flex-1 relative overflow-hidden">
             <Canvas
@@ -186,18 +199,13 @@ const HomePage = () => {
             <Export />
           </div>
         </div>
-
-        {/* Sidebar (1/4 width) */}
         <aside className="w-1/4 bg-white border-l shadow-lg flex flex-col overflow-hidden">
-          {/* Users Section */}
           <div className="p-4 border-b">
             <h3 className="font-semibold text-gray-700 mb-2">
               Online Users ({userList.length})
             </h3>
             <Users users={userList} />
           </div>
-          
-          {/* Chat Section - Now takes full remaining height */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <Chat socket={socketRef.current} roomId={roomId} />
           </div>

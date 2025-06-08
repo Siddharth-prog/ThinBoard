@@ -11,7 +11,7 @@ const server = http.createServer(app); // <-- This creates the `server` variable
 
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:8000', // Or set your frontend origin
+    origin: process.env.PORT, // Or set your frontend origin
     methods: ['GET', 'POST']
   }
 });

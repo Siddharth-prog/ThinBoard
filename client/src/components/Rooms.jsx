@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CopyToClipboard } from 'react-copy-to-clipboard';
+
 import { useNavigate } from 'react-router-dom';
 
 const Rooms = ({ setRoomId, socket, user }) => {

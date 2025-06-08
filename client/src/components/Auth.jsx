@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import io from "socket.io-client";
 
@@ -16,12 +16,52 @@ const avatars = [
   "https://cdn-icons-png.flaticon.com/512/4333/4333653.png",
 ];
 
-const Auth = ({ setUser }) => {
+const Auth = ({ setUser, roomId }) => {
   const [username, setUsername] = useState("");
   const [avatarIndex, setAvatarIndex] = useState(0);
   const [roomIdInput, setRoomIdInput] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
+
+  // Automatically join room if username/avatar exist in localStorage and roomId is available
+  useEffect(() => {
+    if (!socket) return;
+
+    const storedUsername = localStorage.getItem("username");
+    const storedAvatar = localStorage.getItem("avatar");
+
+    const handleConnect = () => {
+      console.log("✅ Socket connected:", socket.id);
+
+      if (storedUsername && storedAvatar && roomId) {
+        socket.emit(
+          "join-room",
+          {
+            roomId,
+            username: storedUsername,
+            avatar: storedAvatar,
+          },
+          (response) => {
+            if (response.success) {
+              console.log(`✅ ${storedUsername} joined room ${roomId}`);
+              setUser({ username: storedUsername, avatar: storedAvatar });
+              navigate(`/homepage/${roomId}`);
+            } else {
+              console.error("❌ Join room failed:", response.error);
+            }
+          }
+        );
+      } else {
+        console.error("❌ Username, avatar or roomId missing for auto-join");
+      }
+    };
+
+    socket.on("connect", handleConnect);
+
+    return () => {
+      socket.off("connect", handleConnect);
+    };
+  }, [socket, roomId, navigate, setUser]);
 
   const userData = {
     username: username.trim(),
@@ -43,7 +83,10 @@ const Auth = ({ setUser }) => {
       if (response.error) {
         setError(response.error);
       } else {
-        localStorage.setItem("whiteboardUser", JSON.stringify(userData));
+        // Store username and avatar separately for useEffect auto-join
+        localStorage.setItem("username", userData.username);
+        localStorage.setItem("avatar", userData.avatar);
+
         setUser(userData);
         navigate(`/homepage/${response.roomId}`);
       }
@@ -65,7 +108,9 @@ const Auth = ({ setUser }) => {
         if (response.error) {
           setError(response.error);
         } else {
-          localStorage.setItem("whiteboardUser", JSON.stringify(userData));
+          localStorage.setItem("username", userData.username);
+          localStorage.setItem("avatar", userData.avatar);
+
           setUser(userData);
           navigate(`/homepage/${response.roomId}`);
         }
@@ -101,9 +146,7 @@ const Auth = ({ setUser }) => {
         <div className="flex justify-center items-center gap-4">
           <button
             onClick={() =>
-              setAvatarIndex(
-                (avatarIndex - 1 + avatars.length) % avatars.length
-              )
+              setAvatarIndex((avatarIndex - 1 + avatars.length) % avatars.length)
             }
           >
             ⬅️
@@ -113,9 +156,7 @@ const Auth = ({ setUser }) => {
             alt="avatar"
             className="w-20 h-20 rounded-full border-4 border-blue-400"
           />
-          <button
-            onClick={() => setAvatarIndex((avatarIndex + 1) % avatars.length)}
-          >
+          <button onClick={() => setAvatarIndex((avatarIndex + 1) % avatars.length)}>
             ➡️
           </button>
         </div>

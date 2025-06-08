@@ -8,20 +8,10 @@ const generateUniqueRoomId = () => {
 export const registerSocketEvents = (io, socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
 
-  socket.on('set-username', async ({ username, avatar }) => {
-    let user = await User.findOne({ socketId: socket.id });
-    if (!user) {
-      user = new User({ socketId: socket.id, username, avatar });
-    } else {
-      user.username = username;
-      user.avatar = avatar;
-    }
-    await user.save();
-  });
-
   socket.on('create-room', async ({ username, avatar }, callback) => {
     try {
       const roomId = generateUniqueRoomId();
+      console.log(`🛠️ Creating room: ${roomId} for user ${username}`);
 
       const room = new Room({ roomId });
       await room.save();
@@ -33,88 +23,145 @@ export const registerSocketEvents = (io, socket) => {
       await room.save();
 
       socket.join(roomId);
+      socket.roomId = roomId;
 
       const users = await User.find({ roomId });
       io.to(roomId).emit('user-list', users);
 
+      console.log(`✅ Room ${roomId} created and joined by ${username}`);
+
       callback({ success: true, roomId });
     } catch (err) {
-      console.error(err);
+      console.error('❌ Room creation error:', err);
       callback({ error: 'Room creation failed' });
     }
   });
 
-  socket.on('join-room', async ({ roomId, username, avatar }, callback) => {
+  socket.on('join-room', async ({ username, avatar, roomId }, callback) => {
     try {
       roomId = roomId.trim().toUpperCase();
       const room = await Room.findOne({ roomId });
-      if (!room) return callback({ error: 'Room not found' });
-
-      const user = new User({ socketId: socket.id, username, avatar, roomId });
-      await user.save();
-
-      room.users.push(user._id);
-      await room.save();
-
+  
+      if (!room) {
+        return callback({ error: 'Room not found' });
+      }
+  
+      // Check if user with this socketId already exists to avoid duplicates
+      let user = await User.findOne({ socketId: socket.id });
+  
+      if (!user) {
+        user = new User({ socketId: socket.id, username, avatar, roomId });
+        await user.save();
+      }
+  
+      // Only add user._id if not already in room.users
+      if (!room.users.some(id => id.equals(user._id))) {
+        room.users.push(user._id);
+        await room.save();
+      }
+      
+  
       socket.join(roomId);
-
+      socket.roomId = roomId;
+  
       const users = await User.find({ roomId });
       io.to(roomId).emit('user-list', users);
-
+  
       callback({ success: true, roomId });
     } catch (err) {
-      console.error(err);
+      console.error('Join room error:', err);
       callback({ error: 'Join room failed' });
     }
   });
+  
 
-  socket.on('drawing', async ({ roomId, ...data }) => {
+  
+  socket.on('drawing', ({ roomId, ...data }) => {
+    if (!roomId) {
+      console.warn(`⚠️ Drawing event received without roomId from ${socket.id}`);
+      return;
+    }
+    console.log(`🖌️ Drawing event in room ${roomId} from ${socket.id}`);
     socket.to(roomId).emit('drawing', data);
   });
 
   socket.on('chat-message', async ({ roomId, message }) => {
-    const user = await User.findOne({ socketId: socket.id });
-    if (!user) return;
-
-    const payload = {
-      sender: user.username,
-      avatar: user.avatar,
-      message,
-      timestamp: new Date(),
-    };
-
-    io.to(roomId).emit('chat-message', payload);
-  });
-
-  socket.on('leave-room', async ({ roomId }) => {
-    const user = await User.findOne({ socketId: socket.id });
-    if (!user) return;
-
-    await Room.findOneAndUpdate({ roomId }, { $pull: { users: user._id } });
-    await User.deleteOne({ socketId: socket.id });
-
-    socket.leave(roomId);
-
-    const users = await User.find({ roomId });
-    io.to(roomId).emit('user-list', users);
-  });
-
-  socket.on('disconnect', async () => {
     try {
       const user = await User.findOne({ socketId: socket.id });
-      if (!user) return;
+      if (!user || !roomId) {
+        console.warn(`⚠️ Chat message rejected - missing user or roomId`);
+        return;
+      }
 
-      const roomId = user.roomId;
+      const payload = {
+        sender: user.username,
+        avatar: user.avatar,
+        message,
+        timestamp: new Date(),
+      };
 
-      await Room.findOneAndUpdate({ roomId }, { $pull: { users: user._id } });
-      await User.deleteOne({ socketId: socket.id });
-
-      const users = await User.find({ roomId });
-      io.to(roomId).emit('user-list', users);
-
-      console.log(`❌ Disconnected: ${socket.id}`);
+      console.log(`💬 Chat from ${user.username} in room ${roomId}: ${message}`);
+      io.to(roomId).emit('chat-message', payload);
     } catch (err) {
-      console.error('Disconnect error:', err);
+      console.error('❌ Chat error:', err);
     }
   });
+
+  socket.on('leave-room', async ({ roomId, userId }) => {
+    try {
+      if (!roomId || !userId) return;
+  
+      // Remove user from User collection
+      await User.deleteOne({ _id: userId });
+  
+      // Remove user from the Room's users array
+      await Room.updateOne(
+        { roomId },
+        { $pull: { users: userId } }
+      );
+  
+      // Make socket leave the Socket.IO room
+      socket.leave(roomId);
+  
+      // Emit updated user list to all in the room
+      const users = await User.find({ roomId });
+      io.to(roomId).emit('user-list', users);
+  
+      console.log(`User ${userId} left room ${roomId}`);
+    } catch (err) {
+      console.error('Error in leave-room handler:', err);
+    }
+  });
+  
+  socket.on('disconnect', async () => {
+    try {
+      const socketId = socket.id;
+  
+      // Find the user with this socketId
+      const user = await User.findOne({ socketId });
+      if (!user) return; // User already removed?
+  
+      const roomId = user.roomId;
+      const userId = user._id;
+  
+      // Delete the user document
+      await User.deleteOne({ _id: userId });
+  
+      // Remove user from the Room's users array
+      await Room.updateOne(
+        { roomId },
+        { $pull: { users: userId } }
+      );
+  
+      // Emit updated user list to the room
+      const users = await User.find({ roomId });
+      io.to(roomId).emit('user-list', users);
+  
+      console.log(`User ${user.username} disconnected and removed from room ${roomId}`);
+    } catch (err) {
+      console.error('Error in disconnect handler:', err);
+    }
+  });
+  
+  
 };
