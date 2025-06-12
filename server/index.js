@@ -5,13 +5,15 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import roomRoutes from './routes/roomRoutes.js';
 import { registerSocketEvents } from './sockets/socketHandlers.js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app); // <-- This creates the `server` variable
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.PORT, // Or set your frontend origin
+    origin: 8000, // Or set your frontend origin
     methods: ['GET', 'POST']
   }
 });
@@ -22,7 +24,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/rooms', roomRoutes);
 
-mongoose.connect("mongodb+srv://siddharth-prog:sidprog54321@thinkboardcluster.cdbejml.mongodb.net/?retryWrites=true&w=majority&appName=ThinkboardCluster")
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB error:', err));
 
@@ -33,6 +35,6 @@ io.on('connection', (socket) => {
   registerSocketEvents(io, socket, userSessions);
 });
 
-server.listen(8000, () => {
+server.listen(process.env.PORT, () => {
   console.log('Server running on port 8000');
 });
