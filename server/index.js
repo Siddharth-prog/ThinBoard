@@ -9,7 +9,16 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app);
+const server = http.createServer(app); 
+
+const io = new Server(server, {
+  cors: {
+    origin: "https://thinkboard-4r7g.onrender.com", // frontend origin
+    methods: ['GET', 'POST']
+  }
+});
+  
+  
 
 app.use(cors());
 app.use(express.json());
@@ -19,14 +28,6 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB error:', err));
 
-const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_URL,
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
-
 const userSessions = new Map();
 
 io.on('connection', (socket) => {
@@ -35,5 +36,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(process.env.PORT || 8000, () => {
-  console.log(`Server running on port ${process.env.PORT || 8000}`);
+  console.log('Server running on port 8000');
 });
