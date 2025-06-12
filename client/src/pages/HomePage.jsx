@@ -64,7 +64,7 @@ const HomePage = () => {
 
   // Initialize socket connection once
   useEffect(() => {
-    socketRef.current = io('http://localhost:8000', {
+    socketRef.current = io('https://thinkboard-backend-k7ec.onrender.com', {
       transports: ['websocket'],
       withCredentials: true,
     });
