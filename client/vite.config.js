@@ -13,7 +13,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/socket.io': 'http://localhost:8000',
+      '/socket.io': 'https://thinkboard-backend-k7ec.onrender.com',
     }
   }
 })
