@@ -32,6 +32,7 @@ const HomePage = () => {
   const [userList, setUserList] = useState([]);
   const [user, setUser] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [loading, setLoading] = useState(true); // ✅ Track loading
 
   const { roomId: paramRoomId } = useParams();
   const [roomId, setRoomId] = useState(paramRoomId || '');
@@ -91,49 +92,39 @@ const HomePage = () => {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
+    setLoading(false); // ✅ Done loading
   }, []);
 
-  // Join room, listen for user-list updates, and leave room on cleanup
-
-  const hasJoinedRef = useRef(false);
-
-  
+  // Join room and listen for user-list updates
   useEffect(() => {
     const socket = socketRef.current;
     if (!roomId || !user || !socket) return;
-  
+
     const handleUserList = (users) => {
       setUserList(users);
     };
-  
-    const joinRoom = () => {
-      if (!hasJoinedRef.current) {
-        socket.emit("join-room", {
-          roomId,
-          username: user.username,
-          avatar: user.avatar,
-        });
-        hasJoinedRef.current = true;
-      }
-    };
-  
-    // Listen to user list updates
-    socket.on("user-list", handleUserList);
-  
-    if (socket.connected) {
-      joinRoom();
-    } else {
-      socket.once("connect", joinRoom);
-    }
-  
-    // Cleanup
+
+    // Listen for updated user list
+    socket.on('user-list', handleUserList);
+
+    // Clean up on unmount or dependency change
     return () => {
-      socket.off("user-list", handleUserList);
-      socket.emit("leave-room", { roomId, username: user.username });
-      hasJoinedRef.current = false;
+      socket.emit('leave-room', { roomId, userId: user.id || user.username });
+      socket.off('user-list', handleUserList);
     };
-  }, [roomId, user]);
-  
+  }, [roomId, user, navigate]);
+
+  // ✅ Wait until loading is complete
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100 text-gray-700">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500 border-solid mx-auto mb-4"></div>
+          <p className="text-lg font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
   
   if (!user) return <Auth setUser={setUser} />;
   if (!roomId) return <Rooms setRoomId={setRoomId} socket={socketRef.current} user={user} />;
