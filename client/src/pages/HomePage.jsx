@@ -95,6 +95,8 @@ const HomePage = () => {
 
   // Join room, listen for user-list updates, and leave room on cleanup
 
+  const hasJoinedRef = useRef(false);
+
   
   useEffect(() => {
     const socket = socketRef.current;
@@ -104,34 +106,34 @@ const HomePage = () => {
       setUserList(users);
     };
   
-    // Join room with callback to handle errors
-    socket.emit(
-      'join-room',
-      {
-        roomId,
-        username: user.username,
-        avatar: user.avatar,
-      },
-      (res) => {
-        if (res.error) {
-          alert(res.error);
-          navigate('/');
-        }
+    const joinRoom = () => {
+      if (!hasJoinedRef.current) {
+        socket.emit("join-room", {
+          roomId,
+          username: user.username,
+          avatar: user.avatar,
+        });
+        hasJoinedRef.current = true;
       }
-    );
-  
-    // Listen for updated user list
-    socket.on('user-list', handleUserList);
-  
-    // Clean up on unmount or dependency change
-    return () => {
-      // Tell server user is leaving this room
-      socket.emit('leave-room', { roomId, userId: user.id || user.username });
-  
-      // Remove this listener to avoid duplicates on re-render
-      socket.off('user-list', handleUserList);
     };
-  }, [roomId, user, navigate]);
+  
+    // Listen to user list updates
+    socket.on("user-list", handleUserList);
+  
+    if (socket.connected) {
+      joinRoom();
+    } else {
+      socket.once("connect", joinRoom);
+    }
+  
+    // Cleanup
+    return () => {
+      socket.off("user-list", handleUserList);
+      socket.emit("leave-room", { roomId, username: user.username });
+      hasJoinedRef.current = false;
+    };
+  }, [roomId, user]);
+  
   
   if (!user) return <Auth setUser={setUser} />;
   if (!roomId) return <Rooms setRoomId={setRoomId} socket={socketRef.current} user={user} />;

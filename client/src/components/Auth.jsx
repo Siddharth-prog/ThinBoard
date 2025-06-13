@@ -1,11 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import io from "socket.io-client";
-
-const socket = io("https://thinkboard-backend-k7ec.onrender.com", {
-  withCredentials: true,
-  transports: ["websocket"],
-});
 
 const avatars = [
   "https://cdn-icons-png.flaticon.com/512/4333/4333609.png",
@@ -16,52 +10,12 @@ const avatars = [
   "https://cdn-icons-png.flaticon.com/512/4333/4333653.png",
 ];
 
-const Auth = ({ setUser, roomId }) => {
+const Auth = ({ setUser }) => {
   const [username, setUsername] = useState("");
   const [avatarIndex, setAvatarIndex] = useState(0);
   const [roomIdInput, setRoomIdInput] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
-
-  // Automatically join room if username/avatar exist in localStorage and roomId is available
-  useEffect(() => {
-    if (!socket) return;
-
-    const storedUsername = localStorage.getItem("username");
-    const storedAvatar = localStorage.getItem("avatar");
-
-    const handleConnect = () => {
-      console.log("✅ Socket connected:", socket.id);
-
-      if (storedUsername && storedAvatar && roomId) {
-        socket.emit(
-          "join-room",
-          {
-            roomId,
-            username: storedUsername,
-            avatar: storedAvatar,
-          },
-          (response) => {
-            if (response.success) {
-              console.log(`✅ ${storedUsername} joined room ${roomId}`);
-              setUser({ username: storedUsername, avatar: storedAvatar });
-              navigate(`/homepage/${roomId}`);
-            } else {
-              console.error("❌ Join room failed:", response.error);
-            }
-          }
-        );
-      } else {
-        console.error("❌ Username, avatar or roomId missing for auto-join");
-      }
-    };
-
-    socket.on("connect", handleConnect);
-
-    return () => {
-      socket.off("connect", handleConnect);
-    };
-  }, [socket, roomId, navigate, setUser]);
 
   const userData = {
     username: username.trim(),
@@ -76,62 +30,41 @@ const Auth = ({ setUser, roomId }) => {
     return true;
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (!validateUser()) return;
 
-    socket.emit("create-room", userData, (response) => {
-      if (response.error) {
-        setError(response.error);
-      } else {
-        // Store username and avatar separately for useEffect auto-join
-        localStorage.setItem("username", userData.username);
-        localStorage.setItem("avatar", userData.avatar);
-
-        setUser(userData);
-        navigate(`/homepage/${response.roomId}`);
-      }
+    const response = await fetch("https://thinkboard-backend-k7ec.onrender.com/create-room", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData),
     });
+
+    const data = await response.json();
+    if (data.error) {
+      setError(data.error);
+    } else {
+      localStorage.setItem("whiteboardUser", JSON.stringify(userData));
+      setUser(userData);
+      navigate(`/homepage/${data.roomId}`);
+    }
   };
 
   const handleJoinRoom = () => {
     if (!validateUser()) return;
-
     if (!roomIdInput.trim()) {
       setError("Please enter a room ID");
       return;
     }
 
-    socket.emit(
-      "join-room",
-      { ...userData, roomId: roomIdInput.trim() },
-      (response) => {
-        if (response.error) {
-          setError(response.error);
-        } else {
-          localStorage.setItem("username", userData.username);
-          localStorage.setItem("avatar", userData.avatar);
-
-          setUser(userData);
-          navigate(`/homepage/${response.roomId}`);
-        }
-      }
-    );
+    localStorage.setItem("whiteboardUser", JSON.stringify(userData));
+    setUser(userData);
+    navigate(`/homepage/${roomIdInput.trim()}`);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-200 px-4">
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md space-y-6">
-        <h1 className="text-4xl font-bold text-center">
-          {"Thinkboard".split("").map((char, i) => (
-            <span
-              key={i}
-              className="inline-block animate-jump"
-              style={{ animationDelay: `${i * 0.1}s` }}
-            >
-              {char}
-            </span>
-          ))}
-        </h1>
+        <h1 className="text-4xl font-bold text-center">Thinkboard</h1>
 
         {error && <p className="text-red-600 text-center">{error}</p>}
 
@@ -144,21 +77,9 @@ const Auth = ({ setUser, roomId }) => {
         />
 
         <div className="flex justify-center items-center gap-4">
-          <button
-            onClick={() =>
-              setAvatarIndex((avatarIndex - 1 + avatars.length) % avatars.length)
-            }
-          >
-            ⬅️
-          </button>
-          <img
-            src={avatars[avatarIndex]}
-            alt="avatar"
-            className="w-20 h-20 rounded-full border-4 border-blue-400"
-          />
-          <button onClick={() => setAvatarIndex((avatarIndex + 1) % avatars.length)}>
-            ➡️
-          </button>
+          <button onClick={() => setAvatarIndex((avatarIndex - 1 + avatars.length) % avatars.length)}>⬅️</button>
+          <img src={avatars[avatarIndex]} alt="avatar" className="w-20 h-20 rounded-full border-4 border-blue-400" />
+          <button onClick={() => setAvatarIndex((avatarIndex + 1) % avatars.length)}>➡️</button>
         </div>
 
         <button
